@@ -8,13 +8,15 @@ import (
 	"sync"
 	"time"
 
-	badger "github.com/dgraph-io/badger/v3"
-	ds "github.com/ipfs/go-datastore"
-	dsq "github.com/ipfs/go-datastore/query"
+	dsextensions "github.com/daotl/go-datastore-extensions"
+	"github.com/dgraph-io/badger/v3"
 	logger "github.com/ipfs/go-log/v2"
-	goprocess "github.com/jbenet/goprocess"
-	dsextensions "github.com/textileio/go-datastore-extensions"
+	"github.com/jbenet/goprocess"
 	"go.uber.org/zap"
+
+	ds "github.com/daotl/go-datastore"
+	"github.com/daotl/go-datastore/key"
+	dsq "github.com/daotl/go-datastore/query"
 )
 
 var log = logger.Logger("badger")
@@ -22,6 +24,8 @@ var log = logger.Logger("badger")
 var ErrClosed = errors.New("datastore closed")
 
 type Datastore struct {
+	keyType key.KeyType
+
 	DB *badger.DB
 
 	closeLk   sync.RWMutex
@@ -100,7 +104,11 @@ var _ dsextensions.TxnExt = (*txn)(nil)
 // NewDatastore creates a new badger datastore.
 //
 // DO NOT set the Dir and/or ValuePath fields of opt, they will be set for you.
-func NewDatastore(path string, options *Options) (*Datastore, error) {
+func NewDatastore(path string, ktype key.KeyType, options *Options) (*Datastore, error) {
+	if !(ktype == key.KeyTypeString || ktype == key.KeyTypeBytes) {
+		return nil, key.ErrKeyTypeNotSupported
+	}
+
 	// Copy the options because we modify them.
 	var opt badger.Options
 	var gcDiscardRatio float64
@@ -140,6 +148,7 @@ func NewDatastore(path string, options *Options) (*Datastore, error) {
 	}
 
 	ds := &Datastore{
+		keyType:        ktype,
 		DB:             kv,
 		closing:        make(chan struct{}),
 		gcDiscardRatio: gcDiscardRatio,
@@ -215,7 +224,7 @@ func (d *Datastore) newImplicitTransaction(readOnly bool) *txn {
 	return &txn{d, d.DB.NewTransaction(!readOnly), true}
 }
 
-func (d *Datastore) Put(key ds.Key, value []byte) error {
+func (d *Datastore) Put(key key.Key, value []byte) error {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -232,7 +241,7 @@ func (d *Datastore) Put(key ds.Key, value []byte) error {
 	return txn.commit()
 }
 
-func (d *Datastore) Sync(prefix ds.Key) error {
+func (d *Datastore) Sync(prefix key.Key) error {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -246,7 +255,7 @@ func (d *Datastore) Sync(prefix ds.Key) error {
 	return d.DB.Sync()
 }
 
-func (d *Datastore) PutWithTTL(key ds.Key, value []byte, ttl time.Duration) error {
+func (d *Datastore) PutWithTTL(key key.Key, value []byte, ttl time.Duration) error {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -263,7 +272,7 @@ func (d *Datastore) PutWithTTL(key ds.Key, value []byte, ttl time.Duration) erro
 	return txn.commit()
 }
 
-func (d *Datastore) SetTTL(key ds.Key, ttl time.Duration) error {
+func (d *Datastore) SetTTL(key key.Key, ttl time.Duration) error {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -280,7 +289,7 @@ func (d *Datastore) SetTTL(key ds.Key, ttl time.Duration) error {
 	return txn.commit()
 }
 
-func (d *Datastore) GetExpiration(key ds.Key) (time.Time, error) {
+func (d *Datastore) GetExpiration(key key.Key) (time.Time, error) {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -293,7 +302,7 @@ func (d *Datastore) GetExpiration(key ds.Key) (time.Time, error) {
 	return txn.getExpiration(key)
 }
 
-func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
+func (d *Datastore) Get(key key.Key) (value []byte, err error) {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -306,7 +315,7 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 	return txn.get(key)
 }
 
-func (d *Datastore) Has(key ds.Key) (bool, error) {
+func (d *Datastore) Has(key key.Key) (bool, error) {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -319,7 +328,7 @@ func (d *Datastore) Has(key ds.Key) (bool, error) {
 	return txn.has(key)
 }
 
-func (d *Datastore) GetSize(key ds.Key) (size int, err error) {
+func (d *Datastore) GetSize(key key.Key) (size int, err error) {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 	if d.closed {
@@ -332,7 +341,7 @@ func (d *Datastore) GetSize(key ds.Key) (size int, err error) {
 	return txn.getSize(key)
 }
 
-func (d *Datastore) Delete(key ds.Key) error {
+func (d *Datastore) Delete(key key.Key) error {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
 
@@ -448,7 +457,7 @@ func (d *Datastore) gcOnce() error {
 
 var _ ds.Batch = (*batch)(nil)
 
-func (b *batch) Put(key ds.Key, value []byte) error {
+func (b *batch) Put(key key.Key, value []byte) error {
 	b.ds.closeLk.RLock()
 	defer b.ds.closeLk.RUnlock()
 	if b.ds.closed {
@@ -457,11 +466,11 @@ func (b *batch) Put(key ds.Key, value []byte) error {
 	return b.put(key, value)
 }
 
-func (b *batch) put(key ds.Key, value []byte) error {
+func (b *batch) put(key key.Key, value []byte) error {
 	return b.writeBatch.Set(key.Bytes(), value)
 }
 
-func (b *batch) Delete(key ds.Key) error {
+func (b *batch) Delete(key key.Key) error {
 	b.ds.closeLk.RLock()
 	defer b.ds.closeLk.RUnlock()
 	if b.ds.closed {
@@ -471,7 +480,7 @@ func (b *batch) Delete(key ds.Key) error {
 	return b.delete(key)
 }
 
-func (b *batch) delete(key ds.Key) error {
+func (b *batch) delete(key key.Key) error {
 	return b.writeBatch.Delete(key.Bytes())
 }
 
@@ -515,7 +524,7 @@ func (b *batch) cancel() {
 var _ ds.Datastore = (*txn)(nil)
 var _ ds.TTLDatastore = (*txn)(nil)
 
-func (t *txn) Put(key ds.Key, value []byte) error {
+func (t *txn) Put(key key.Key, value []byte) error {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -524,11 +533,11 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 	return t.put(key, value)
 }
 
-func (t *txn) put(key ds.Key, value []byte) error {
+func (t *txn) put(key key.Key, value []byte) error {
 	return t.txn.Set(key.Bytes(), value)
 }
 
-func (t *txn) Sync(prefix ds.Key) error {
+func (t *txn) Sync(prefix key.Key) error {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -538,7 +547,7 @@ func (t *txn) Sync(prefix ds.Key) error {
 	return nil
 }
 
-func (t *txn) PutWithTTL(key ds.Key, value []byte, ttl time.Duration) error {
+func (t *txn) PutWithTTL(key key.Key, value []byte, ttl time.Duration) error {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -547,11 +556,11 @@ func (t *txn) PutWithTTL(key ds.Key, value []byte, ttl time.Duration) error {
 	return t.putWithTTL(key, value, ttl)
 }
 
-func (t *txn) putWithTTL(key ds.Key, value []byte, ttl time.Duration) error {
+func (t *txn) putWithTTL(key key.Key, value []byte, ttl time.Duration) error {
 	return t.txn.SetEntry(badger.NewEntry(key.Bytes(), value).WithTTL(ttl))
 }
 
-func (t *txn) GetExpiration(key ds.Key) (time.Time, error) {
+func (t *txn) GetExpiration(key key.Key) (time.Time, error) {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -561,7 +570,7 @@ func (t *txn) GetExpiration(key ds.Key) (time.Time, error) {
 	return t.getExpiration(key)
 }
 
-func (t *txn) getExpiration(key ds.Key) (time.Time, error) {
+func (t *txn) getExpiration(key key.Key) (time.Time, error) {
 	item, err := t.txn.Get(key.Bytes())
 	if err == badger.ErrKeyNotFound {
 		return time.Time{}, ds.ErrNotFound
@@ -571,7 +580,7 @@ func (t *txn) getExpiration(key ds.Key) (time.Time, error) {
 	return time.Unix(int64(item.ExpiresAt()), 0), nil
 }
 
-func (t *txn) SetTTL(key ds.Key, ttl time.Duration) error {
+func (t *txn) SetTTL(key key.Key, ttl time.Duration) error {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -581,7 +590,7 @@ func (t *txn) SetTTL(key ds.Key, ttl time.Duration) error {
 	return t.setTTL(key, ttl)
 }
 
-func (t *txn) setTTL(key ds.Key, ttl time.Duration) error {
+func (t *txn) setTTL(key key.Key, ttl time.Duration) error {
 	item, err := t.txn.Get(key.Bytes())
 	if err != nil {
 		return err
@@ -592,7 +601,7 @@ func (t *txn) setTTL(key ds.Key, ttl time.Duration) error {
 
 }
 
-func (t *txn) Get(key ds.Key) ([]byte, error) {
+func (t *txn) Get(key key.Key) ([]byte, error) {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -602,7 +611,7 @@ func (t *txn) Get(key ds.Key) ([]byte, error) {
 	return t.get(key)
 }
 
-func (t *txn) get(key ds.Key) ([]byte, error) {
+func (t *txn) get(key key.Key) ([]byte, error) {
 	item, err := t.txn.Get(key.Bytes())
 	if err == badger.ErrKeyNotFound {
 		err = ds.ErrNotFound
@@ -614,7 +623,7 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 	return item.ValueCopy(nil)
 }
 
-func (t *txn) Has(key ds.Key) (bool, error) {
+func (t *txn) Has(key key.Key) (bool, error) {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -624,7 +633,7 @@ func (t *txn) Has(key ds.Key) (bool, error) {
 	return t.has(key)
 }
 
-func (t *txn) has(key ds.Key) (bool, error) {
+func (t *txn) has(key key.Key) (bool, error) {
 	_, err := t.txn.Get(key.Bytes())
 	switch err {
 	case badger.ErrKeyNotFound:
@@ -636,7 +645,7 @@ func (t *txn) has(key ds.Key) (bool, error) {
 	}
 }
 
-func (t *txn) GetSize(key ds.Key) (int, error) {
+func (t *txn) GetSize(key key.Key) (int, error) {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -646,7 +655,7 @@ func (t *txn) GetSize(key ds.Key) (int, error) {
 	return t.getSize(key)
 }
 
-func (t *txn) getSize(key ds.Key) (int, error) {
+func (t *txn) getSize(key key.Key) (int, error) {
 	item, err := t.txn.Get(key.Bytes())
 	switch err {
 	case nil:
@@ -658,7 +667,7 @@ func (t *txn) getSize(key ds.Key) (int, error) {
 	}
 }
 
-func (t *txn) Delete(key ds.Key) error {
+func (t *txn) Delete(key key.Key) error {
 	t.ds.closeLk.RLock()
 	defer t.ds.closeLk.RUnlock()
 	if t.ds.closed {
@@ -668,7 +677,7 @@ func (t *txn) Delete(key ds.Key) error {
 	return t.delete(key)
 }
 
-func (t *txn) delete(key ds.Key) error {
+func (t *txn) delete(key key.Key) error {
 	return t.txn.Delete(key.Bytes())
 }
 
@@ -697,9 +706,19 @@ func (t *txn) query(q dsextensions.QueryExt) (dsq.Results, error) {
 	opt := badger.DefaultIteratorOptions
 	opt.PrefetchValues = !q.KeysOnly
 
-	prefix := ds.NewKey(q.Prefix).String()
-	if prefix != "/" {
-		opt.Prefix = []byte(prefix + "/")
+	if q.Prefix == nil {
+		q.Prefix = key.EmptyKeyFromType(t.ds.keyType)
+	}
+	switch q.Prefix.KeyType() {
+	case key.KeyTypeString:
+		prefix := q.Prefix.String()
+		if prefix != "/" {
+			opt.Prefix = []byte(prefix + "/")
+		}
+	case key.KeyTypeBytes:
+		opt.Prefix = q.Prefix.Bytes()
+	default:
+		return nil, key.ErrKeyTypeNotSupported
 	}
 
 	// Handle ordering
@@ -732,7 +751,7 @@ func (t *txn) query(q dsextensions.QueryExt) (dsq.Results, error) {
 
 			// Remove the parts we've already applied.
 			naiveQuery := q.Query
-			naiveQuery.Prefix = ""
+			naiveQuery.Prefix = nil
 			naiveQuery.Filters = nil
 
 			// Apply the rest of the query
@@ -775,8 +794,8 @@ func (t *txn) query(q dsextensions.QueryExt) (dsq.Results, error) {
 		it.Rewind()
 
 		// Seek to seek prefix if needed.
-		if q.SeekPrefix != "" {
-			it.Seek([]byte(q.SeekPrefix))
+		if q.SeekPrefix != nil {
+			it.Seek(q.SeekPrefix.Bytes())
 		}
 
 		// skip to the offset
@@ -796,7 +815,7 @@ func (t *txn) query(q dsextensions.QueryExt) (dsq.Results, error) {
 			matches := true
 			check := func(value []byte) error {
 				e := dsq.Entry{
-					Key:   string(item.Key()),
+					Key:   key.NewKeyFromTypeAndBytes(t.ds.keyType, item.Key()),
 					Value: value,
 					Size:  int(item.ValueSize()), // this function is basically free
 				}
@@ -834,7 +853,12 @@ func (t *txn) query(q dsextensions.QueryExt) (dsq.Results, error) {
 
 		for sent := 0; (q.Limit <= 0 || sent < q.Limit) && it.Valid(); it.Next() {
 			item := it.Item()
-			e := dsq.Entry{Key: string(item.Key())}
+			itemkey := item.Key()
+			// Need to make a copy of itemkey here because it may change after
+			// the entry is returned to the querying user
+			kbytes := make([]byte, len(itemkey))
+			copy(kbytes, itemkey)
+			e := dsq.Entry{Key: key.NewKeyFromTypeAndBytes(t.ds.keyType, kbytes)}
 
 			// Maybe get the value
 			var result dsq.Result

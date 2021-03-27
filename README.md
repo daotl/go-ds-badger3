@@ -9,9 +9,13 @@
 
 > Datastore implementation using [badger](https://github.com/dgraph-io/badger) as backend.
 
+This fork adds support for bytes-backed keys in addition to original string-backed
+keys, which could improve performance in some cases by preventing type conversion
+and reducing key size.
+
 ## Lead Maintainer
 
-[Jakub Sztandera](https://github.com/kubuxu)
+[Nex](https://github.com/NexZhu)
 
 ## Table of Contents
 
@@ -21,17 +25,11 @@
 
 ## Documentation
 
-https://godoc.org/github.com/textileio/go-ds-badger3
+See [godoc](https://pkg.go.dev/github.com/daotl/go-ds-badger3).
 
 ## Contribute
 
-Feel free to join in. All welcome. Open an [issue](https://github.com/textileio/go-ds-badger3/issues)!
-
-This repository falls under the IPFS [Code of Conduct](https://github.com/ipfs/community/blob/master/code-of-conduct.md).
-
-### Want to hack on IPFS?
-
-[![](https://cdn.rawgit.com/jbenet/contribute-ipfs-gif/master/img/contribute.gif)](https://github.com/ipfs/community/blob/master/CONTRIBUTING.md)
+Feel free to join in. All welcome. Open an [issue](https://github.com/daotl/go-ds-badger3/issues)!
 
 ## License
 

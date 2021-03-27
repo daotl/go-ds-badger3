@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/ipfs/go-datastore"
-	dsq "github.com/ipfs/go-datastore/query"
-	dstest "github.com/ipfs/go-datastore/test"
+	ds "github.com/daotl/go-datastore"
+	"github.com/daotl/go-datastore/key"
+	dsq "github.com/daotl/go-datastore/query"
+	dstest "github.com/daotl/go-datastore/test"
 )
 
 var testcases = map[string]string{
@@ -31,15 +32,15 @@ var testcases = map[string]string{
 // returns datastore, and a function to call on exit.
 // (this garbage collects). So:
 //
-//  d, close := newDS(t)
+//  d, close := newDS(t, ktype)
 //  defer close()
-func newDS(t *testing.T) (*Datastore, func()) {
+func newDS(t *testing.T, ktype key.KeyType) (*Datastore, func()) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,16 +50,17 @@ func newDS(t *testing.T) (*Datastore, func()) {
 	}
 }
 
-func addTestCases(t *testing.T, d *Datastore, testcases map[string]string) {
+func addTestCases(t *testing.T, ktype key.KeyType, d *Datastore,
+	testcases map[string]string) {
 	for k, v := range testcases {
-		dsk := ds.NewKey(k)
+		dsk := key.NewKeyFromTypeAndString(ktype, k)
 		if err := d.Put(dsk, []byte(v)); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	for k, v := range testcases {
-		dsk := ds.NewKey(k)
+		dsk := key.NewKeyFromTypeAndString(ktype, k)
 		v2, err := d.Get(dsk)
 		if err != nil {
 			t.Fatal(err)
@@ -68,13 +70,13 @@ func addTestCases(t *testing.T, d *Datastore, testcases map[string]string) {
 		}
 	}
 }
-func TestQuery(t *testing.T) {
-	d, done := newDS(t)
+func testQuery(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
-	addTestCases(t, d, testcases)
+	addTestCases(t, ktype, d, testcases)
 
-	rs, err := d.Query(dsq.Query{Prefix: "/a/"})
+	rs, err := d.Query(dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/a/")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +91,8 @@ func TestQuery(t *testing.T) {
 
 	// test offset and limit
 
-	rs, err = d.Query(dsq.Query{Prefix: "/a/", Offset: 2, Limit: 2})
+	rs, err = d.Query(dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/a/"), Offset: 2,
+		Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,12 +103,17 @@ func TestQuery(t *testing.T) {
 	}, rs)
 }
 
-func TestHas(t *testing.T) {
-	d, done := newDS(t)
-	defer done()
-	addTestCases(t, d, testcases)
+func TestQuery(t *testing.T) {
+	testQuery(t, key.KeyTypeString)
+	testQuery(t, key.KeyTypeBytes)
+}
 
-	has, err := d.Has(ds.NewKey("/a/b/c"))
+func testHas(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
+	defer done()
+	addTestCases(t, ktype, d, testcases)
+
+	has, err := d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -114,7 +122,7 @@ func TestHas(t *testing.T) {
 		t.Error("Key should be found")
 	}
 
-	has, err = d.Has(ds.NewKey("/a/b/c/d"))
+	has, err = d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -124,12 +132,17 @@ func TestHas(t *testing.T) {
 	}
 }
 
-func TestGetSize(t *testing.T) {
-	d, done := newDS(t)
-	defer done()
-	addTestCases(t, d, testcases)
+func TestHas(t *testing.T) {
+	testHas(t, key.KeyTypeString)
+	testHas(t, key.KeyTypeBytes)
+}
 
-	size, err := d.GetSize(ds.NewKey("/a/b/c"))
+func testGetSize(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
+	defer done()
+	addTestCases(t, ktype, d, testcases)
+
+	size, err := d.GetSize(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -138,18 +151,23 @@ func TestGetSize(t *testing.T) {
 		t.Error("")
 	}
 
-	_, err = d.GetSize(ds.NewKey("/a/b/c/d"))
+	_, err = d.GetSize(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if err != ds.ErrNotFound {
 		t.Error(err)
 	}
 }
 
-func TestNotExistGet(t *testing.T) {
-	d, done := newDS(t)
-	defer done()
-	addTestCases(t, d, testcases)
+func TestGetSize(t *testing.T) {
+	testGetSize(t, key.KeyTypeString)
+	testGetSize(t, key.KeyTypeBytes)
+}
 
-	has, err := d.Has(ds.NewKey("/a/b/c/d"))
+func testNotExistGet(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
+	defer done()
+	addTestCases(t, ktype, d, testcases)
+
+	has, err := d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -158,7 +176,7 @@ func TestNotExistGet(t *testing.T) {
 		t.Error("Key should not be found")
 	}
 
-	val, err := d.Get(ds.NewKey("/a/b/c/d"))
+	val, err := d.Get(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if val != nil {
 		t.Error("Key should not be found")
 	}
@@ -171,12 +189,17 @@ func TestNotExistGet(t *testing.T) {
 	}
 }
 
-func TestDelete(t *testing.T) {
-	d, done := newDS(t)
-	defer done()
-	addTestCases(t, d, testcases)
+func TestNotExistGet(t *testing.T) {
+	testNotExistGet(t, key.KeyTypeString)
+	testNotExistGet(t, key.KeyTypeBytes)
+}
 
-	has, err := d.Has(ds.NewKey("/a/b/c"))
+func testDelete(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
+	defer done()
+	addTestCases(t, ktype, d, testcases)
+
+	has, err := d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -184,12 +207,12 @@ func TestDelete(t *testing.T) {
 		t.Error("Key should be found")
 	}
 
-	err = d.Delete(ds.NewKey("/a/b/c"))
+	err = d.Delete(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
 
-	has, err = d.Has(ds.NewKey("/a/b/c"))
+	has, err = d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -198,16 +221,21 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-func TestGetEmpty(t *testing.T) {
-	d, done := newDS(t)
+func TestDelete(t *testing.T) {
+	testDelete(t, key.KeyTypeString)
+	testDelete(t, key.KeyTypeBytes)
+}
+
+func testGetEmpty(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
-	err := d.Put(ds.NewKey("/a"), []byte{})
+	err := d.Put(key.NewKeyFromTypeAndString(ktype, "/a"), []byte{})
 	if err != nil {
 		t.Error(err)
 	}
 
-	v, err := d.Get(ds.NewKey("/a"))
+	v, err := d.Get(key.NewKeyFromTypeAndString(ktype, "/a"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -215,6 +243,11 @@ func TestGetEmpty(t *testing.T) {
 	if len(v) != 0 {
 		t.Error("expected 0 len []byte form get")
 	}
+}
+
+func TestGetEmpty(t *testing.T) {
+	testGetEmpty(t, key.KeyTypeString)
+	testGetEmpty(t, key.KeyTypeBytes)
 }
 
 func expectMatches(t *testing.T, expect []string, actualR dsq.Results) {
@@ -229,7 +262,7 @@ func expectMatches(t *testing.T, expect []string, actualR dsq.Results) {
 	for _, k := range expect {
 		found := false
 		for _, e := range actual {
-			if e.Key == k {
+			if e.Key.String() == k {
 				found = true
 			}
 		}
@@ -239,8 +272,8 @@ func expectMatches(t *testing.T, expect []string, actualR dsq.Results) {
 	}
 }
 
-func TestBatching(t *testing.T) {
-	d, done := newDS(t)
+func testBatching(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
 	b, err := d.Batch()
@@ -249,7 +282,7 @@ func TestBatching(t *testing.T) {
 	}
 
 	for k, v := range testcases {
-		err := b.Put(ds.NewKey(k), []byte(v))
+		err := b.Put(key.NewKeyFromTypeAndString(ktype, k), []byte(v))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -261,7 +294,7 @@ func TestBatching(t *testing.T) {
 	}
 
 	for k, v := range testcases {
-		val, err := d.Get(ds.NewKey(k))
+		val, err := d.Get(key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -278,12 +311,12 @@ func TestBatching(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = b.Delete(ds.NewKey("/a/b"))
+	err = b.Delete(key.NewKeyFromTypeAndString(ktype, "/a/b"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.Delete(ds.NewKey("/a/b/c"))
+	err = b.Delete(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +326,7 @@ func TestBatching(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rs, err := d.Query(dsq.Query{Prefix: "/"})
+	rs, err := d.Query(dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,9 +348,9 @@ func TestBatching(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const key = "/xyz"
+	const k = "/xyz"
 
-	err = b.Put(ds.NewKey(key), []byte("/x/y/z"))
+	err = b.Put(key.NewKeyFromTypeAndString(ktype, k), []byte("/x/y/z"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,20 +361,25 @@ func TestBatching(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = d.Get(ds.NewKey(key))
+	_, err = d.Get(key.NewKeyFromTypeAndString(ktype, k))
 	if err == nil {
 		t.Fatal("expected error trying to get uncommited data")
 	}
 }
 
-func TestBatchingRequired(t *testing.T) {
+func TestBatching(t *testing.T) {
+	testBatching(t, key.KeyTypeString)
+	testBatching(t, key.KeyTypeBytes)
+}
+
+func testBatchingRequired(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dsOpts := DefaultOptions
-	d, err := NewDatastore(path, &dsOpts)
+	d, err := NewDatastore(path, ktype, &dsOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +402,7 @@ func TestBatchingRequired(t *testing.T) {
 	for ; puts < 10000000; puts++ {
 		buf := make([]byte, valSize)
 		rand.Read(buf)
-		err = tx.Put(ds.NewKey(fmt.Sprintf("/key%d", puts)), buf)
+		err = tx.Put(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", puts)), buf)
 		if err != nil {
 			break
 		}
@@ -387,7 +425,7 @@ func TestBatchingRequired(t *testing.T) {
 	for i := 0; i < puts; i++ {
 		buf := make([]byte, valSize)
 		rand.Read(buf)
-		err = b.Put(ds.NewKey(fmt.Sprintf("/key%d", i)), buf)
+		err = b.Put(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)), buf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -399,13 +437,18 @@ func TestBatchingRequired(t *testing.T) {
 	}
 }
 
+func TestBatchingRequired(t *testing.T) {
+	testBatchingRequired(t, key.KeyTypeString)
+	testBatchingRequired(t, key.KeyTypeBytes)
+}
+
 // Tests from basic_tests from go-datastore
 
-func TestBasicPutGet(t *testing.T) {
-	d, done := newDS(t)
+func testBasicPutGet(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
-	k := ds.NewKey("foo")
+	k := key.NewKeyFromTypeAndString(ktype, "foo")
 	val := []byte("Hello Datastore!")
 
 	err := d.Put(k, val)
@@ -455,11 +498,16 @@ func TestBasicPutGet(t *testing.T) {
 	}
 }
 
-func TestNotFounds(t *testing.T) {
-	d, done := newDS(t)
+func TestBasicPutGet(t *testing.T) {
+	testBasicPutGet(t, key.KeyTypeString)
+	testBasicPutGet(t, key.KeyTypeBytes)
+}
+
+func testNotFounds(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
-	badk := ds.NewKey("notreal")
+	badk := key.NewKeyFromTypeAndString(ktype, "notreal")
 
 	val, err := d.Get(badk)
 	if err != ds.ErrNotFound {
@@ -479,17 +527,22 @@ func TestNotFounds(t *testing.T) {
 	}
 }
 
-func TestManyKeysAndQuery(t *testing.T) {
-	d, done := newDS(t)
+func TestNotFounds(t *testing.T) {
+	testNotFounds(t, key.KeyTypeString)
+	testNotFounds(t, key.KeyTypeBytes)
+}
+
+func testManyKeysAndQuery(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
-	var keys []ds.Key
+	var keys []key.Key
 	var keystrs []string
 	var values [][]byte
 	count := 100
 	for i := 0; i < count; i++ {
 		s := fmt.Sprintf("%dkey%d", i, i)
-		dsk := ds.NewKey(s)
+		dsk := key.NewKeyFromTypeAndString(ktype, s)
 		keystrs = append(keystrs, dsk.String())
 		keys = append(keys, dsk)
 		buf := make([]byte, 64)
@@ -535,7 +588,7 @@ func TestManyKeysAndQuery(t *testing.T) {
 			break
 		}
 
-		outkeys = append(outkeys, res.Key)
+		outkeys = append(outkeys, res.Key.String())
 	}
 
 	t.Log("verifying query output")
@@ -560,8 +613,13 @@ func TestManyKeysAndQuery(t *testing.T) {
 	}
 }
 
-func TestGC(t *testing.T) {
-	d, done := newDS(t)
+func TestManyKeysAndQuery(t *testing.T) {
+	testManyKeysAndQuery(t, key.KeyTypeString)
+	testManyKeysAndQuery(t, key.KeyTypeBytes)
+}
+
+func testGC(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
 	count := 10000
@@ -575,7 +633,7 @@ func TestGC(t *testing.T) {
 	for i := 0; i < count; i++ {
 		buf := make([]byte, 6400)
 		rand.Read(buf)
-		err = b.Put(ds.NewKey(fmt.Sprintf("/key%d", i)), buf)
+		err = b.Put(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)), buf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -593,7 +651,7 @@ func TestGC(t *testing.T) {
 
 	t.Logf("deleting %d values", count)
 	for i := 0; i < count; i++ {
-		err := b.Delete(ds.NewKey(fmt.Sprintf("/key%d", i)))
+		err := b.Delete(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -609,18 +667,23 @@ func TestGC(t *testing.T) {
 	}
 }
 
+func TestGC(t *testing.T) {
+	testGC(t, key.KeyTypeString)
+	testGC(t, key.KeyTypeBytes)
+}
+
 // TestDiskUsage verifies we fetch some badger size correctly.
 // Because the Size metric is only updated every minute in badger and
 // this interval is not configurable, we re-open the database
-// (the size is always calculated on Open) to make things quick.
-func TestDiskUsage(t *testing.T) {
+// (the size is always calculated
+func testDiskUsage(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(path)
 
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -628,10 +691,10 @@ func TestDiskUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	addTestCases(t, d, testcases)
+	addTestCases(t, ktype, d, testcases)
 	d.Close()
 
-	d, err = NewDatastore(path, nil)
+	d, err = NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,14 +705,14 @@ func TestDiskUsage(t *testing.T) {
 	d.Close()
 }
 
-func TestTxnDiscard(t *testing.T) {
+func testTxnDiscard(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(path)
 
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	defer os.RemoveAll(path)
 	if err != nil {
 		t.Fatal(err)
@@ -659,7 +722,7 @@ func TestTxnDiscard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := ds.NewKey("/test/thing")
+	key := key.NewKeyFromTypeAndString(ktype, "/test/thing")
 	if err := txn.Put(key, []byte{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
@@ -675,14 +738,19 @@ func TestTxnDiscard(t *testing.T) {
 	d.Close()
 }
 
-func TestTxnCommit(t *testing.T) {
+func TestTxnDiscard(t *testing.T) {
+	testTxnDiscard(t, key.KeyTypeString)
+	testTxnDiscard(t, key.KeyTypeBytes)
+}
+
+func testTxnCommit(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(path)
 
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +759,7 @@ func TestTxnCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := ds.NewKey("/test/thing")
+	key := key.NewKeyFromTypeAndString(ktype, "/test/thing")
 	if err := txn.Put(key, []byte{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
@@ -710,14 +778,19 @@ func TestTxnCommit(t *testing.T) {
 	d.Close()
 }
 
-func TestTxnBatch(t *testing.T) {
+func TestTxnCommit(t *testing.T) {
+	testTxnCommit(t, key.KeyTypeString)
+	testTxnCommit(t, key.KeyTypeBytes)
+}
+
+func testTxnBatch(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(path)
 
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -726,17 +799,17 @@ func TestTxnBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := make(map[ds.Key][]byte)
+	data := make(map[string][]byte)
 	for i := 0; i < 10; i++ {
-		key := ds.NewKey(fmt.Sprintf("/test/%d", i))
+		k := key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/test/%d", i))
 		bytes := make([]byte, 16)
 		_, err := rand.Read(bytes)
 		if err != nil {
 			t.Fatal(err)
 		}
-		data[key] = bytes
+		data[k.String()] = bytes
 
-		err = txn.Put(key, bytes)
+		err = txn.Put(k, bytes)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -746,8 +819,8 @@ func TestTxnBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for key, bytes := range data {
-		retrieved, err := d.Get(key)
+	for k, bytes := range data {
+		retrieved, err := d.Get(key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -764,14 +837,19 @@ func TestTxnBatch(t *testing.T) {
 	d.Close()
 }
 
-func TestTTL(t *testing.T) {
+func TestTxnBatch(t *testing.T) {
+	testTxnBatch(t, key.KeyTypeString)
+	testTxnBatch(t, key.KeyTypeBytes)
+}
+
+func testTTL(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(path)
 
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -781,20 +859,21 @@ func TestTTL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data := make(map[ds.Key][]byte)
+	data := make(map[string][]byte)
 	for i := 0; i < 10; i++ {
-		key := ds.NewKey(fmt.Sprintf("/test/%d", i))
+		k := key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/test/%d", i))
 		bytes := make([]byte, 16)
 		_, err := rand.Read(bytes)
 		if err != nil {
 			t.Fatal(err)
 		}
-		data[key] = bytes
+		data[k.String()] = bytes
 	}
 
 	// write data
-	for key, bytes := range data {
-		err = txn.(ds.TTL).PutWithTTL(key, bytes, time.Second)
+	for k, bytes := range data {
+		err = txn.(ds.TTL).PutWithTTL(key.NewKeyFromTypeAndString(ktype, k),
+			bytes, time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -809,8 +888,8 @@ func TestTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key := range data {
-		err := txn.(ds.TTL).SetTTL(key, time.Second)
+	for k := range data {
+		err := txn.(ds.TTL).SetTTL(key.NewKeyFromTypeAndString(ktype, k), time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -824,8 +903,8 @@ func TestTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key := range data {
-		_, err := txn.Get(key)
+	for k := range data {
+		_, err := txn.Get(key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -834,8 +913,8 @@ func TestTTL(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	for key := range data {
-		has, err := d.Has(key)
+	for k := range data {
+		has, err := d.Has(key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -847,10 +926,15 @@ func TestTTL(t *testing.T) {
 	d.Close()
 }
 
-func TestExpirations(t *testing.T) {
+func TestTTL(t *testing.T) {
+	testTTL(t, key.KeyTypeString)
+	testTTL(t, key.KeyTypeBytes)
+}
+
+func testExpirations(t *testing.T, ktype key.KeyType) {
 	var err error
 
-	d, done := newDS(t)
+	d, done := newDS(t, ktype)
 	defer done()
 
 	txn, err := d.NewTransaction(false)
@@ -860,7 +944,7 @@ func TestExpirations(t *testing.T) {
 	ttltxn := txn.(ds.TTL)
 	defer txn.Discard()
 
-	key := ds.NewKey("/abc/def")
+	k := key.NewKeyFromTypeAndString(ktype, "/abc/def")
 	val := make([]byte, 32)
 	if n, err := rand.Read(val); n != 32 || err != nil {
 		t.Fatal("source of randomness failed")
@@ -870,7 +954,7 @@ func TestExpirations(t *testing.T) {
 	now := time.Now()
 	tgt := now.Add(ttl)
 
-	if err = ttltxn.PutWithTTL(key, val, ttl); err != nil {
+	if err = ttltxn.PutWithTTL(k, val, ttl); err != nil {
 		t.Fatalf("adding with ttl failed: %v", err)
 	}
 
@@ -888,7 +972,7 @@ func TestExpirations(t *testing.T) {
 
 	// GetExpiration returns expected value.
 	var dsExp time.Time
-	if dsExp, err = ttltxn.GetExpiration(key); err != nil {
+	if dsExp, err = ttltxn.GetExpiration(k); err != nil {
 		t.Fatalf("getting expiration failed: %v", err)
 	} else if tgt.Sub(dsExp) >= 5*time.Second {
 		t.Fatal("expiration returned by datastore not within the expected range (tolerance: 5 seconds)")
@@ -918,18 +1002,24 @@ func TestExpirations(t *testing.T) {
 	}
 
 	// Datastore->GetExpiration()
-	if exp, err := d.GetExpiration(key); err != nil {
+	if exp, err := d.GetExpiration(k); err != nil {
 		t.Fatalf("querying datastore failed: %v", err)
 	} else if exp != dsExp {
 		t.Fatalf("expiration returned from DB differs from that returned by txn, expected: %v, actual: %v", dsExp, exp)
 	}
 
-	if _, err := d.GetExpiration(ds.NewKey("/foo/bar")); err != ds.ErrNotFound {
+	if _, err := d.GetExpiration(key.NewKeyFromTypeAndString(ktype, "/foo/bar")); err != ds.
+		ErrNotFound {
 		t.Fatalf("wrong error type: %v", err)
 	}
 }
 
-func TestOptions(t *testing.T) {
+func TestExpirations(t *testing.T) {
+	testExpirations(t, key.KeyTypeString)
+	testExpirations(t, key.KeyTypeBytes)
+}
+
+func testOptions(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
@@ -937,7 +1027,7 @@ func TestOptions(t *testing.T) {
 	opts := DefaultOptions
 	opts.GcSleep = 0
 	opts.GcInterval = time.Second
-	d, err := NewDatastore(path, &opts)
+	d, err := NewDatastore(path, ktype, &opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -947,12 +1037,17 @@ func TestOptions(t *testing.T) {
 	}
 }
 
-func TestClosedError(t *testing.T) {
+func TestOptions(t *testing.T) {
+	testOptions(t, key.KeyTypeString)
+	testOptions(t, key.KeyTypeBytes)
+}
+
+func testClosedError(t *testing.T, ktype key.KeyType) {
 	path, err := ioutil.TempDir(os.TempDir(), "testing_badger_")
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := NewDatastore(path, nil)
+	d, err := NewDatastore(path, ktype, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -968,7 +1063,7 @@ func TestClosedError(t *testing.T) {
 	}
 	os.RemoveAll(path)
 
-	key := ds.NewKey("/a/b/c")
+	k := key.NewKeyFromTypeAndString(ktype, "/a/b/c")
 	errMsg := "expected ErrClosed, actual:"
 
 	_, err = d.NewTransaction(false)
@@ -976,42 +1071,42 @@ func TestClosedError(t *testing.T) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.Put(key, nil)
+	err = d.Put(k, nil)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.Sync(key)
+	err = d.Sync(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.PutWithTTL(key, nil, time.Second)
+	err = d.PutWithTTL(k, nil, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.SetTTL(key, time.Second)
+	err = d.SetTTL(k, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.GetExpiration(ds.Key{})
+	_, err = d.GetExpiration(key.EmptyKeyFromType(ktype))
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.Get(key)
+	_, err = d.Get(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.Has(key)
+	_, err = d.Has(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.GetSize(key)
+	_, err = d.GetSize(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
@@ -1039,47 +1134,47 @@ func TestClosedError(t *testing.T) {
 	d.gcInterval = time.Millisecond
 	d.periodicGC()
 
-	err = tx.Put(key, nil)
+	err = tx.Put(k, nil)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.Sync(key)
+	err = tx.Sync(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.PutWithTTL(key, nil, time.Second)
+	err = tx.PutWithTTL(k, nil, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.GetExpiration(key)
+	_, err = tx.GetExpiration(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.SetTTL(key, time.Second)
+	err = tx.SetTTL(k, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.Get(key)
+	_, err = tx.Get(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.Has(key)
+	_, err = tx.Has(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.GetSize(key)
+	_, err = tx.GetSize(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.Delete(key)
+	err = tx.Delete(k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
@@ -1100,9 +1195,19 @@ func TestClosedError(t *testing.T) {
 	}
 }
 
-func TestSuite(t *testing.T) {
-	d, done := newDS(t)
+func TestClosedError(t *testing.T) {
+	testClosedError(t, key.KeyTypeString)
+	testClosedError(t, key.KeyTypeBytes)
+}
+
+func testSuite(t *testing.T, ktype key.KeyType) {
+	d, done := newDS(t, ktype)
 	defer done()
 
-	dstest.SubtestAll(t, d)
+	dstest.SubtestAll(t, ktype, d)
+}
+
+func TestSuite(t *testing.T) {
+	testSuite(t, key.KeyTypeString)
+	testSuite(t, key.KeyTypeBytes)
 }
