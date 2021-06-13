@@ -706,17 +706,20 @@ func (t *txn) query(q dsextensions.QueryExt) (dsq.Results, error) {
 	opt := badger.DefaultIteratorOptions
 	opt.PrefetchValues = !q.KeysOnly
 
+	var qPrefix key.Key
 	if q.Prefix == nil {
-		q.Prefix = key.EmptyKeyFromType(t.ds.keyType)
+		qPrefix = key.EmptyKeyFromType(t.ds.keyType)
+	} else {
+		qPrefix = q.Prefix
 	}
-	switch q.Prefix.KeyType() {
+	switch qPrefix.KeyType() {
 	case key.KeyTypeString:
-		prefix := q.Prefix.String()
+		prefix := key.Clean(qPrefix).String()
 		if prefix != "/" {
 			opt.Prefix = []byte(prefix + "/")
 		}
 	case key.KeyTypeBytes:
-		opt.Prefix = q.Prefix.Bytes()
+		opt.Prefix = qPrefix.Bytes()
 	default:
 		return nil, key.ErrKeyTypeNotSupported
 	}
