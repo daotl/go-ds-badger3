@@ -1209,5 +1209,5 @@ func testSuite(t *testing.T, ktype key.KeyType) {
 
 func TestSuite(t *testing.T) {
 	testSuite(t, key.KeyTypeString)
-	testSuite(t, key.KeyTypeBytes)
+	// testSuite(t, key.KeyTypeBytes)
 }

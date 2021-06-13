@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	dsextensions "github.com/daotl/go-datastore-extensions"
+	logger "github.com/daotl/go-log/v2"
 	"github.com/dgraph-io/badger/v3"
-	logger "github.com/ipfs/go-log/v2"
 	"github.com/jbenet/goprocess"
 	"go.uber.org/zap"
 
 	ds "github.com/daotl/go-datastore"
+	dsextensions "github.com/daotl/go-datastore-extensions"
 	"github.com/daotl/go-datastore/key"
 	dsq "github.com/daotl/go-datastore/query"
 )
