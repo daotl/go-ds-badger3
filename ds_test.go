@@ -2,6 +2,7 @@ package badger
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -29,6 +30,8 @@ var testcases = map[string]string{
 	"/g":     "",
 }
 
+var bg = context.Background()
+
 // returns datastore, and a function to call on exit.
 // (this garbage collects). So:
 //
@@ -54,14 +57,14 @@ func addTestCases(t *testing.T, ktype key.KeyType, d *Datastore,
 	testcases map[string]string) {
 	for k, v := range testcases {
 		dsk := key.NewKeyFromTypeAndString(ktype, k)
-		if err := d.Put(dsk, []byte(v)); err != nil {
+		if err := d.Put(bg, dsk, []byte(v)); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	for k, v := range testcases {
 		dsk := key.NewKeyFromTypeAndString(ktype, k)
-		v2, err := d.Get(dsk)
+		v2, err := d.Get(bg, dsk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +79,7 @@ func testQuery(t *testing.T, ktype key.KeyType) {
 
 	addTestCases(t, ktype, d, testcases)
 
-	rs, err := d.Query(dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/a/")})
+	rs, err := d.Query(bg, dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/a/")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +94,7 @@ func testQuery(t *testing.T, ktype key.KeyType) {
 
 	// test offset and limit
 
-	rs, err = d.Query(dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/a/"), Offset: 2,
+	rs, err = d.Query(bg, dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/a/"), Offset: 2,
 		Limit: 2})
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +116,7 @@ func testHas(t *testing.T, ktype key.KeyType) {
 	defer done()
 	addTestCases(t, ktype, d, testcases)
 
-	has, err := d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
+	has, err := d.Has(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -122,7 +125,7 @@ func testHas(t *testing.T, ktype key.KeyType) {
 		t.Error("Key should be found")
 	}
 
-	has, err = d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
+	has, err = d.Has(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -142,7 +145,7 @@ func testGetSize(t *testing.T, ktype key.KeyType) {
 	defer done()
 	addTestCases(t, ktype, d, testcases)
 
-	size, err := d.GetSize(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
+	size, err := d.GetSize(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -151,7 +154,7 @@ func testGetSize(t *testing.T, ktype key.KeyType) {
 		t.Error("")
 	}
 
-	_, err = d.GetSize(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
+	_, err = d.GetSize(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if err != ds.ErrNotFound {
 		t.Error(err)
 	}
@@ -167,7 +170,7 @@ func testNotExistGet(t *testing.T, ktype key.KeyType) {
 	defer done()
 	addTestCases(t, ktype, d, testcases)
 
-	has, err := d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
+	has, err := d.Has(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -176,7 +179,7 @@ func testNotExistGet(t *testing.T, ktype key.KeyType) {
 		t.Error("Key should not be found")
 	}
 
-	val, err := d.Get(key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
+	val, err := d.Get(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c/d"))
 	if val != nil {
 		t.Error("Key should not be found")
 	}
@@ -199,7 +202,7 @@ func testDelete(t *testing.T, ktype key.KeyType) {
 	defer done()
 	addTestCases(t, ktype, d, testcases)
 
-	has, err := d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
+	has, err := d.Has(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -207,12 +210,12 @@ func testDelete(t *testing.T, ktype key.KeyType) {
 		t.Error("Key should be found")
 	}
 
-	err = d.Delete(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
+	err = d.Delete(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
 
-	has, err = d.Has(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
+	has, err = d.Has(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -230,12 +233,12 @@ func testGetEmpty(t *testing.T, ktype key.KeyType) {
 	d, done := newDS(t, ktype)
 	defer done()
 
-	err := d.Put(key.NewKeyFromTypeAndString(ktype, "/a"), []byte{})
+	err := d.Put(bg, key.NewKeyFromTypeAndString(ktype, "/a"), []byte{})
 	if err != nil {
 		t.Error(err)
 	}
 
-	v, err := d.Get(key.NewKeyFromTypeAndString(ktype, "/a"))
+	v, err := d.Get(bg, key.NewKeyFromTypeAndString(ktype, "/a"))
 	if err != nil {
 		t.Error(err)
 	}
@@ -276,25 +279,25 @@ func testBatching(t *testing.T, ktype key.KeyType) {
 	d, done := newDS(t, ktype)
 	defer done()
 
-	b, err := d.Batch()
+	b, err := d.Batch(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for k, v := range testcases {
-		err := b.Put(key.NewKeyFromTypeAndString(ktype, k), []byte(v))
+		err := b.Put(bg, key.NewKeyFromTypeAndString(ktype, k), []byte(v))
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	err = b.Commit()
+	err = b.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for k, v := range testcases {
-		val, err := d.Get(key.NewKeyFromTypeAndString(ktype, k))
+		val, err := d.Get(bg, key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -306,27 +309,27 @@ func testBatching(t *testing.T, ktype key.KeyType) {
 
 	//Test delete
 
-	b, err = d.Batch()
+	b, err = d.Batch(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.Delete(key.NewKeyFromTypeAndString(ktype, "/a/b"))
+	err = b.Delete(bg, key.NewKeyFromTypeAndString(ktype, "/a/b"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.Delete(key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
+	err = b.Delete(bg, key.NewKeyFromTypeAndString(ktype, "/a/b/c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.Commit()
+	err = b.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rs, err := d.Query(dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/")})
+	rs, err := d.Query(bg, dsq.Query{Prefix: key.NewKeyFromTypeAndString(ktype, "/")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,14 +346,14 @@ func testBatching(t *testing.T, ktype key.KeyType) {
 
 	//Test cancel
 
-	b, err = d.Batch()
+	b, err = d.Batch(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	const k = "/xyz"
 
-	err = b.Put(key.NewKeyFromTypeAndString(ktype, k), []byte("/x/y/z"))
+	err = b.Put(bg, key.NewKeyFromTypeAndString(ktype, k), []byte("/x/y/z"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +364,7 @@ func testBatching(t *testing.T, ktype key.KeyType) {
 		t.Fatal(err)
 	}
 
-	_, err = d.Get(key.NewKeyFromTypeAndString(ktype, k))
+	_, err = d.Get(bg, key.NewKeyFromTypeAndString(ktype, k))
 	if err == nil {
 		t.Fatal("expected error trying to get uncommited data")
 	}
@@ -394,7 +397,7 @@ func testBatchingRequired(t *testing.T, ktype key.KeyType) {
 	// not testing batching logic, but is here to prove that batching works
 	// where a transaction fails.
 	t.Logf("putting %d byte values until transaction overflows", valSize)
-	tx, err := d.NewTransaction(false)
+	tx, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +405,7 @@ func testBatchingRequired(t *testing.T, ktype key.KeyType) {
 	for ; puts < 10000000; puts++ {
 		buf := make([]byte, valSize)
 		rand.Read(buf)
-		err = tx.Put(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", puts)), buf)
+		err = tx.Put(bg, key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", puts)), buf)
 		if err != nil {
 			break
 		}
@@ -413,25 +416,25 @@ func testBatchingRequired(t *testing.T, ktype key.KeyType) {
 	} else {
 		t.Logf("OK - transaction cannot handle %d puts: %s", puts, err)
 	}
-	tx.Discard()
+	tx.Discard(bg)
 
 	// Check that batch succeeds with the same number of writes that caused a
 	// transaction to fail.
 	t.Logf("putting %d %d byte values using batch", puts, valSize)
-	b, err := d.Batch()
+	b, err := d.Batch(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < puts; i++ {
 		buf := make([]byte, valSize)
 		rand.Read(buf)
-		err = b.Put(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)), buf)
+		err = b.Put(bg, key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)), buf)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	err = b.Commit()
+	err = b.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,12 +454,12 @@ func testBasicPutGet(t *testing.T, ktype key.KeyType) {
 	k := key.NewKeyFromTypeAndString(ktype, "foo")
 	val := []byte("Hello Datastore!")
 
-	err := d.Put(k, val)
+	err := d.Put(bg, k, val)
 	if err != nil {
 		t.Fatal("error putting to datastore: ", err)
 	}
 
-	have, err := d.Has(k)
+	have, err := d.Has(bg, k)
 	if err != nil {
 		t.Fatal("error calling has on key we just put: ", err)
 	}
@@ -465,7 +468,7 @@ func testBasicPutGet(t *testing.T, ktype key.KeyType) {
 		t.Fatal("should have key foo, has returned false")
 	}
 
-	out, err := d.Get(k)
+	out, err := d.Get(bg, k)
 	if err != nil {
 		t.Fatal("error getting value after put: ", err)
 	}
@@ -474,7 +477,7 @@ func testBasicPutGet(t *testing.T, ktype key.KeyType) {
 		t.Fatal("value received on get wasnt what we expected:", out)
 	}
 
-	have, err = d.Has(k)
+	have, err = d.Has(bg, k)
 	if err != nil {
 		t.Fatal("error calling has after get: ", err)
 	}
@@ -483,12 +486,12 @@ func testBasicPutGet(t *testing.T, ktype key.KeyType) {
 		t.Fatal("should have key foo, has returned false")
 	}
 
-	err = d.Delete(k)
+	err = d.Delete(bg, k)
 	if err != nil {
 		t.Fatal("error calling delete: ", err)
 	}
 
-	have, err = d.Has(k)
+	have, err = d.Has(bg, k)
 	if err != nil {
 		t.Fatal("error calling has after delete: ", err)
 	}
@@ -509,7 +512,7 @@ func testNotFounds(t *testing.T, ktype key.KeyType) {
 
 	badk := key.NewKeyFromTypeAndString(ktype, "notreal")
 
-	val, err := d.Get(badk)
+	val, err := d.Get(bg, badk)
 	if err != ds.ErrNotFound {
 		t.Fatal("expected ErrNotFound for key that doesnt exist, got: ", err)
 	}
@@ -518,7 +521,7 @@ func testNotFounds(t *testing.T, ktype key.KeyType) {
 		t.Fatal("get should always return nil for not found values")
 	}
 
-	have, err := d.Has(badk)
+	have, err := d.Has(bg, badk)
 	if err != nil {
 		t.Fatal("error calling has on not found key: ", err)
 	}
@@ -552,7 +555,7 @@ func testManyKeysAndQuery(t *testing.T, ktype key.KeyType) {
 
 	t.Logf("putting %d values", count)
 	for i, k := range keys {
-		err := d.Put(k, values[i])
+		err := d.Put(bg, k, values[i])
 		if err != nil {
 			t.Fatalf("error on put[%d]: %s", i, err)
 		}
@@ -560,7 +563,7 @@ func testManyKeysAndQuery(t *testing.T, ktype key.KeyType) {
 
 	t.Log("getting values back")
 	for i, k := range keys {
-		val, err := d.Get(k)
+		val, err := d.Get(bg, k)
 		if err != nil {
 			t.Fatalf("error on get[%d]: %s", i, err)
 		}
@@ -572,7 +575,7 @@ func testManyKeysAndQuery(t *testing.T, ktype key.KeyType) {
 
 	t.Log("querying values")
 	q := dsq.Query{KeysOnly: true}
-	resp, err := d.Query(q)
+	resp, err := d.Query(bg, q)
 	if err != nil {
 		t.Fatal("calling query: ", err)
 	}
@@ -607,7 +610,7 @@ func testManyKeysAndQuery(t *testing.T, ktype key.KeyType) {
 
 	t.Log("deleting all keys")
 	for _, k := range keys {
-		if err := d.Delete(k); err != nil {
+		if err := d.Delete(bg, k); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -624,7 +627,7 @@ func testGC(t *testing.T, ktype key.KeyType) {
 
 	count := 10000
 
-	b, err := d.Batch()
+	b, err := d.Batch(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,36 +636,36 @@ func testGC(t *testing.T, ktype key.KeyType) {
 	for i := 0; i < count; i++ {
 		buf := make([]byte, 6400)
 		rand.Read(buf)
-		err = b.Put(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)), buf)
+		err = b.Put(bg, key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)), buf)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	err = b.Commit()
+	err = b.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	b, err = d.Batch()
+	b, err = d.Batch(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Logf("deleting %d values", count)
 	for i := 0; i < count; i++ {
-		err := b.Delete(key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)))
+		err := b.Delete(bg, key.NewKeyFromTypeAndString(ktype, fmt.Sprintf("/key%d", i)))
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	err = b.Commit()
+	err = b.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := d.CollectGarbage(); err != nil {
+	if err := d.CollectGarbage(bg); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -718,16 +721,16 @@ func testTxnDiscard(t *testing.T, ktype key.KeyType) {
 		t.Fatal(err)
 	}
 
-	txn, err := d.NewTransaction(false)
+	txn, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	key := key.NewKeyFromTypeAndString(ktype, "/test/thing")
-	if err := txn.Put(key, []byte{1, 2, 3}); err != nil {
+	if err := txn.Put(bg, key, []byte{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
-	txn.Discard()
-	has, err := d.Has(key)
+	txn.Discard(bg)
+	has, err := d.Has(bg, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,19 +758,19 @@ func testTxnCommit(t *testing.T, ktype key.KeyType) {
 		t.Fatal(err)
 	}
 
-	txn, err := d.NewTransaction(false)
+	txn, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	key := key.NewKeyFromTypeAndString(ktype, "/test/thing")
-	if err := txn.Put(key, []byte{1, 2, 3}); err != nil {
+	if err := txn.Put(bg, key, []byte{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
-	err = txn.Commit()
+	err = txn.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	has, err := d.Has(key)
+	has, err := d.Has(bg, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,7 +798,7 @@ func testTxnBatch(t *testing.T, ktype key.KeyType) {
 		t.Fatal(err)
 	}
 
-	txn, err := d.NewTransaction(false)
+	txn, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -809,18 +812,18 @@ func testTxnBatch(t *testing.T, ktype key.KeyType) {
 		}
 		data[k.String()] = bytes
 
-		err = txn.Put(k, bytes)
+		err = txn.Put(bg, k, bytes)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	err = txn.Commit()
+	err = txn.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for k, bytes := range data {
-		retrieved, err := d.Get(key.NewKeyFromTypeAndString(ktype, k))
+		retrieved, err := d.Get(bg, key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -854,7 +857,7 @@ func testTTL(t *testing.T, ktype key.KeyType) {
 		t.Fatal(err)
 	}
 
-	txn, err := d.NewTransaction(false)
+	txn, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -872,49 +875,49 @@ func testTTL(t *testing.T, ktype key.KeyType) {
 
 	// write data
 	for k, bytes := range data {
-		err = txn.(ds.TTL).PutWithTTL(key.NewKeyFromTypeAndString(ktype, k),
+		err = txn.(ds.TTL).PutWithTTL(bg, key.NewKeyFromTypeAndString(ktype, k),
 			bytes, time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	err = txn.Commit()
+	err = txn.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// set ttl
-	txn, err = d.NewTransaction(false)
+	txn, err = d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for k := range data {
-		err := txn.(ds.TTL).SetTTL(key.NewKeyFromTypeAndString(ktype, k), time.Second)
+		err := txn.(ds.TTL).SetTTL(bg, key.NewKeyFromTypeAndString(ktype, k), time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	err = txn.Commit()
+	err = txn.Commit(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	txn, err = d.NewTransaction(true)
+	txn, err = d.NewTransaction(bg, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for k := range data {
-		_, err := txn.Get(key.NewKeyFromTypeAndString(ktype, k))
+		_, err := txn.Get(bg, key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	txn.Discard()
+	txn.Discard(bg)
 
 	time.Sleep(time.Second)
 
 	for k := range data {
-		has, err := d.Has(key.NewKeyFromTypeAndString(ktype, k))
+		has, err := d.Has(bg, key.NewKeyFromTypeAndString(ktype, k))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -937,12 +940,12 @@ func testExpirations(t *testing.T, ktype key.KeyType) {
 	d, done := newDS(t, ktype)
 	defer done()
 
-	txn, err := d.NewTransaction(false)
+	txn, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ttltxn := txn.(ds.TTL)
-	defer txn.Discard()
+	defer txn.Discard(bg)
 
 	k := key.NewKeyFromTypeAndString(ktype, "/abc/def")
 	val := make([]byte, 32)
@@ -954,25 +957,25 @@ func testExpirations(t *testing.T, ktype key.KeyType) {
 	now := time.Now()
 	tgt := now.Add(ttl)
 
-	if err = ttltxn.PutWithTTL(k, val, ttl); err != nil {
+	if err = ttltxn.PutWithTTL(bg, k, val, ttl); err != nil {
 		t.Fatalf("adding with ttl failed: %v", err)
 	}
 
-	if err = txn.Commit(); err != nil {
+	if err = txn.Commit(bg); err != nil {
 		t.Fatalf("commiting transaction failed: %v", err)
 	}
 
 	// Second transaction to retrieve expirations.
-	txn, err = d.NewTransaction(true)
+	txn, err = d.NewTransaction(bg, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ttltxn = txn.(ds.TTL)
-	defer txn.Discard()
+	defer txn.Discard(bg)
 
 	// GetExpiration returns expected value.
 	var dsExp time.Time
-	if dsExp, err = ttltxn.GetExpiration(k); err != nil {
+	if dsExp, err = ttltxn.GetExpiration(bg, k); err != nil {
 		t.Fatalf("getting expiration failed: %v", err)
 	} else if tgt.Sub(dsExp) >= 5*time.Second {
 		t.Fatal("expiration returned by datastore not within the expected range (tolerance: 5 seconds)")
@@ -986,7 +989,7 @@ func testExpirations(t *testing.T, ktype key.KeyType) {
 		KeysOnly:          true,
 	}
 	var ress dsq.Results
-	if ress, err = txn.Query(q); err != nil {
+	if ress, err = txn.Query(bg, q); err != nil {
 		t.Fatalf("querying datastore failed: %v", err)
 	}
 
@@ -1002,13 +1005,13 @@ func testExpirations(t *testing.T, ktype key.KeyType) {
 	}
 
 	// Datastore->GetExpiration()
-	if exp, err := d.GetExpiration(k); err != nil {
+	if exp, err := d.GetExpiration(bg, k); err != nil {
 		t.Fatalf("querying datastore failed: %v", err)
 	} else if exp != dsExp {
 		t.Fatalf("expiration returned from DB differs from that returned by txn, expected: %v, actual: %v", dsExp, exp)
 	}
 
-	if _, err := d.GetExpiration(key.NewKeyFromTypeAndString(ktype, "/foo/bar")); err != ds.
+	if _, err := d.GetExpiration(bg, key.NewKeyFromTypeAndString(ktype, "/foo/bar")); err != ds.
 		ErrNotFound {
 		t.Fatalf("wrong error type: %v", err)
 	}
@@ -1051,7 +1054,7 @@ func testClosedError(t *testing.T, ktype key.KeyType) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dstx, err := d.NewTransaction(false)
+	dstx, err := d.NewTransaction(bg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1066,52 +1069,52 @@ func testClosedError(t *testing.T, ktype key.KeyType) {
 	k := key.NewKeyFromTypeAndString(ktype, "/a/b/c")
 	errMsg := "expected ErrClosed, actual:"
 
-	_, err = d.NewTransaction(false)
+	_, err = d.NewTransaction(bg, false)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.Put(k, nil)
+	err = d.Put(bg, k, nil)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.Sync(k)
+	err = d.Sync(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.PutWithTTL(k, nil, time.Second)
+	err = d.PutWithTTL(bg, k, nil, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.SetTTL(k, time.Second)
+	err = d.SetTTL(bg, k, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.GetExpiration(key.EmptyKeyFromType(ktype))
+	_, err = d.GetExpiration(bg, key.EmptyKeyFromType(ktype))
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.Get(k)
+	_, err = d.Get(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.Has(k)
+	_, err = d.Has(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.GetSize(k)
+	_, err = d.GetSize(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = d.Query(dsq.Query{})
+	_, err = d.Query(bg, dsq.Query{})
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
@@ -1126,7 +1129,7 @@ func testClosedError(t *testing.T, ktype key.KeyType) {
 		t.Error(errMsg, err)
 	}
 
-	err = d.CollectGarbage()
+	err = d.CollectGarbage(bg)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
@@ -1134,57 +1137,57 @@ func testClosedError(t *testing.T, ktype key.KeyType) {
 	d.gcInterval = time.Millisecond
 	d.periodicGC()
 
-	err = tx.Put(k, nil)
+	err = tx.Put(bg, k, nil)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.Sync(k)
+	err = tx.Sync(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.PutWithTTL(k, nil, time.Second)
+	err = tx.PutWithTTL(bg, k, nil, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.GetExpiration(k)
+	_, err = tx.GetExpiration(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.SetTTL(k, time.Second)
+	err = tx.SetTTL(bg, k, time.Second)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.Get(k)
+	_, err = tx.Get(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.Has(k)
+	_, err = tx.Has(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.GetSize(k)
+	_, err = tx.GetSize(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.Delete(k)
+	err = tx.Delete(bg, k)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	_, err = tx.Query(dsq.Query{})
+	_, err = tx.Query(bg, dsq.Query{})
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
 
-	err = tx.Commit()
+	err = tx.Commit(bg)
 	if !errors.Is(err, ErrClosed) {
 		t.Error(errMsg, err)
 	}
